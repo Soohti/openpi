@@ -39,6 +39,7 @@ import openpi.shared.array_typing as at
 import openpi.training.sharding as sharding
 
 PALIGEMMA_VOCAB_SIZE = 257_152
+PLATFORM = jax.devices()[0].platform.casefold()
 
 
 @dataclasses.dataclass
@@ -214,15 +215,18 @@ class Attention(nn.Module):
             v = jnp.concatenate([cache_v, v], axis=1)
 
         q = einops.rearrange(q, "B T (K G) H -> B T K G H", K=self.configs[0].num_kv_heads)
-        # logits = jnp.einsum("BTKGH,BSKH->BKGTS", q, k, preferred_element_type=jnp.float32)
 
-        # Patch for Metal backend
-        G = q.shape[3]
-        k_expanded = einops.rearrange(k, "B S K H -> B S K 1 H")
-        k_broadcast = jnp.broadcast_to(k_expanded, k_expanded.shape[:3] + (G,) + k_expanded.shape[4:])
-        q_f32 = q.astype(jnp.float32)
-        k_broadcast_f32 = k_broadcast.astype(jnp.float32)
-        logits = jnp.einsum("BTKGH,BSKGH->BKGTS", q_f32, k_broadcast_f32)
+        if PLATFORM == 'metal':
+          # Patch for Metal backend
+          G = q.shape[3]
+          k_expanded = einops.rearrange(k, "B S K H -> B S K 1 H")
+          k_broadcast = jnp.broadcast_to(k_expanded, k_expanded.shape[:3] + (G,) + k_expanded.shape[4:])
+          q_f32 = q.astype(jnp.float32)
+          k_broadcast_f32 = k_broadcast.astype(jnp.float32)
+          logits = jnp.einsum("BTKGH,BSKGH->BKGTS", q_f32, k_broadcast_f32)
+
+        else:
+          logits = jnp.einsum("BTKGH,BSKH->BKGTS", q, k, preferred_element_type=jnp.float32)
 
         if attn_mask.shape != (q.shape[0], 1, q.shape[1], k.shape[1]):
             raise ValueError(
