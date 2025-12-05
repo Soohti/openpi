@@ -191,7 +191,7 @@ class DataConfigFactory(abc.ABC):
             return None
         try:
             data_assets_dir = str(assets_dir / asset_id)
-            norm_stats = _normalize.load(_download.maybe_download(data_assets_dir))
+            norm_stats = _normalize.load(_download.maybe_download(data_assets_dir, token='anon'))
             logging.info(f"Loaded norm stats from {data_assets_dir}")
             return norm_stats
         except FileNotFoundError:
